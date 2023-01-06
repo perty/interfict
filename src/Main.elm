@@ -2,7 +2,7 @@ module Main exposing (decodeStory, main)
 
 import Browser
 import Dict exposing (Dict)
-import Html exposing (Html, button, div, text)
+import Html exposing (Html, button, div, h1, p, text)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode
@@ -22,6 +22,8 @@ main =
 type alias Model =
     { story : Story
     , texts : Dict Home StoryText
+    , viewMode : ViewMode
+    , currentScene : Maybe Scene
     }
 
 
@@ -51,10 +53,17 @@ type alias StoryText =
     String
 
 
+type ViewMode
+    = Library
+    | ViewStory
+
+
 init : flags -> ( Model, Cmd message )
 init _ =
     ( { story = { scene = [] }
       , texts = Dict.empty
+      , viewMode = Library
+      , currentScene = Nothing
       }
     , Cmd.none
     )
@@ -73,7 +82,7 @@ update message model =
             ( model, getStory StoryLoaded )
 
         StoryLoaded (Ok story) ->
-            ( { model | story = story }, getStoryTexts story )
+            ( { model | story = story, viewMode = ViewStory, currentScene = List.head story.scene }, getStoryTexts story )
 
         StoryLoaded (Err _) ->
             ( model, Cmd.none )
@@ -87,10 +96,50 @@ update message model =
 
 view : Model -> Html Message
 view model =
+    case model.viewMode of
+        Library ->
+            viewLibrary
+
+        ViewStory ->
+            viewStory model
+
+
+viewLibrary : Html.Html Message
+viewLibrary =
     div []
         [ button [ onClick LoadStory ]
             [ text "Load" ]
         ]
+
+
+viewStory : Model -> Html Message
+viewStory model =
+    let
+        title =
+            model.currentScene |> Maybe.map .name |> Maybe.withDefault "??"
+
+        maybeHome =
+            model.currentScene |> Maybe.map .home
+
+        content =
+            case maybeHome of
+                Nothing ->
+                    "??"
+
+                Just home ->
+                    Dict.get home model.texts |> Maybe.withDefault "??"
+    in
+    div []
+        [ h1 [] [ text title ]
+        , div [] (textToParagraphs content)
+        ]
+
+
+textToParagraphs : StoryText -> List (Html Message)
+textToParagraphs storyText =
+    storyText
+        |> String.split "\n\n"
+        |> List.map (\s -> p [] [ text s ])
 
 
 subscriptions : Model -> Sub message
