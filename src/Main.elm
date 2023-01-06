@@ -1,6 +1,7 @@
 module Main exposing (decodeStory, main)
 
 import Browser exposing (Document)
+import Browser.Dom as Dom
 import Browser.Navigation exposing (load, pushUrl)
 import Dict exposing (Dict)
 import Html exposing (Html, button, div, h1, img, p, text)
@@ -9,6 +10,7 @@ import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (required)
+import Task
 import Url
 
 
@@ -92,6 +94,7 @@ type Message
     | GotoScene Home
     | LinkClicked Browser.UrlRequest
     | UrlChanged Url.Url
+    | NoOp
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -142,7 +145,17 @@ update message model =
                 home =
                     String.split "/" (Url.toString url) |> List.reverse |> List.head |> Maybe.withDefault "???"
             in
-            ( { model | url = url, currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }, Cmd.none )
+            ( { model | url = url, currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }
+            , resetViewport
+            )
+
+        NoOp ->
+            ( model, Cmd.none )
+
+
+resetViewport : Cmd Message
+resetViewport =
+    Task.perform (\_ -> NoOp) (Dom.setViewport 0 0)
 
 
 view : Model -> Document Message
