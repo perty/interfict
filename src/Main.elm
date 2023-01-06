@@ -3,6 +3,7 @@ module Main exposing (decodeStory, main)
 import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
+import Http
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (required)
 
@@ -18,7 +19,7 @@ main =
 
 
 type alias Model =
-    { count : Int }
+    { story : Story }
 
 
 type alias Story =
@@ -41,37 +42,32 @@ type alias SceneOption =
 
 init : flags -> ( Model, Cmd message )
 init _ =
-    ( { count = 0 }, Cmd.none )
+    ( { story = { scene = [] } }, Cmd.none )
 
 
 type Message
-    = Increment
-    | Decrement
+    = LoadStory
+    | StoryLoaded (Result Http.Error Story)
 
 
 update : Message -> Model -> ( Model, Cmd Message )
 update message model =
-    -- First we consider which message we have received.
     case message of
-        -- The increment message! Let's increment. We create a copy of the model with count that is one more
-        -- than we started with.
-        Increment ->
-            ( { model | count = model.count + 1 }, Cmd.none )
+        LoadStory ->
+            ( model, getStory StoryLoaded )
 
-        -- The decrement message! Let's decrement.
-        Decrement ->
-            ( { model | count = model.count - 1 }, Cmd.none )
+        StoryLoaded (Ok story) ->
+            ( { model | story = story }, Cmd.none )
+
+        StoryLoaded (Err _) ->
+            ( model, Cmd.none )
 
 
 view : Model -> Html Message
 view model =
     div []
-        [ button [ onClick Increment ]
-            [ text "+1" ]
-        , div []
-            [ text (String.fromInt model.count)
-            ]
-        , button [ onClick Decrement ] [ text "-1" ]
+        [ button [ onClick LoadStory ]
+            [ text "Load" ]
         ]
 
 
@@ -99,3 +95,11 @@ decodeSceneOption =
     Decode.succeed SceneOption
         |> required "optionText" Decode.string
         |> required "target" Decode.string
+
+
+getStory : (Result Http.Error Story -> Message) -> Cmd Message
+getStory message =
+    Http.get
+        { url = "/story/story.json"
+        , expect = Http.expectJson message decodeStory
+        }
