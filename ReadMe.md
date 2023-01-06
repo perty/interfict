@@ -1,13 +1,8 @@
-# Elm Template 1
+# InterFict 
 
-Template used in the class "Become a programmer".
+Interactive Fiction or Create your own adventure. 
 
 ## Usage
-
-### Initialize
-
-1. Create your own repository with this repository as a template.
-2. In your repository, run `npm install` to install tools we need.
 
 ### Development
 
