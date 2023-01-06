@@ -2,7 +2,8 @@ module Main exposing (decodeStory, main)
 
 import Browser
 import Dict exposing (Dict)
-import Html exposing (Html, button, div, h1, p, text)
+import Html exposing (Html, button, div, h1, img, p, text)
+import Html.Attributes exposing (src, style)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode
@@ -22,6 +23,7 @@ main =
 type alias Model =
     { story : Story
     , texts : Dict Home StoryText
+    , images : Dict Home StoryImage
     , viewMode : ViewMode
     , currentScene : Maybe Scene
     }
@@ -53,6 +55,10 @@ type alias StoryText =
     String
 
 
+type alias StoryImage =
+    String
+
+
 type ViewMode
     = Library
     | ViewStory
@@ -62,6 +68,7 @@ init : flags -> ( Model, Cmd message )
 init _ =
     ( { story = { scene = [] }
       , texts = Dict.empty
+      , images = Dict.empty
       , viewMode = Library
       , currentScene = Nothing
       }
@@ -73,6 +80,7 @@ type Message
     = LoadStory
     | StoryLoaded (Result Http.Error Story)
     | StoryTextLoaded Home (Result Http.Error StoryText)
+    | StoryImageFound Home (Result Http.Error StoryImage)
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -82,7 +90,12 @@ update message model =
             ( model, getStory StoryLoaded )
 
         StoryLoaded (Ok story) ->
-            ( { model | story = story, viewMode = ViewStory, currentScene = List.head story.scene }, getStoryTexts story )
+            ( { model | story = story, viewMode = ViewStory, currentScene = List.head story.scene }
+            , Cmd.batch
+                [ getStoryTexts story
+                , getStoryImages story
+                ]
+            )
 
         StoryLoaded (Err _) ->
             ( model, Cmd.none )
@@ -91,6 +104,12 @@ update message model =
             ( { model | texts = Dict.insert home storyText model.texts }, Cmd.none )
 
         StoryTextLoaded _ (Err _) ->
+            ( model, Cmd.none )
+
+        StoryImageFound home (Ok _) ->
+            ( { model | images = Dict.insert home home model.images }, Cmd.none )
+
+        StoryImageFound _ (Err _) ->
             ( model, Cmd.none )
 
 
@@ -106,7 +125,7 @@ view model =
 
 viewLibrary : Html.Html Message
 viewLibrary =
-    div []
+    div [ style "width" "100%" ]
         [ button [ onClick LoadStory ]
             [ text "Load" ]
         ]
@@ -118,20 +137,16 @@ viewStory model =
         title =
             model.currentScene |> Maybe.map .name |> Maybe.withDefault "??"
 
-        maybeHome =
-            model.currentScene |> Maybe.map .home
+        home =
+            model.currentScene |> Maybe.map .home |> Maybe.withDefault "??"
 
         content =
-            case maybeHome of
-                Nothing ->
-                    "??"
-
-                Just home ->
-                    Dict.get home model.texts |> Maybe.withDefault "??"
+            Dict.get home model.texts |> Maybe.withDefault "??"
     in
     div []
-        [ h1 [] [ text title ]
-        , div [] (textToParagraphs content)
+        [ img [ src ("/story/images/" ++ home ++ ".png"), style "width" "100%" ] []
+        , h1 [ style "text-align" "center" ] [ text title ]
+        , div [ style "margin" "5px" ] (textToParagraphs content)
         ]
 
 
@@ -189,4 +204,20 @@ getStoryText home =
     Http.get
         { url = "/story/text/" ++ home ++ ".txt"
         , expect = Http.expectString (StoryTextLoaded home)
+        }
+
+
+getStoryImages : Story -> Cmd Message
+getStoryImages story =
+    story.scene
+        |> List.map .home
+        |> List.map getStoryImage
+        |> Cmd.batch
+
+
+getStoryImage : Home -> Cmd Message
+getStoryImage home =
+    Http.get
+        { url = "/story/images/" ++ home ++ ".png"
+        , expect = Http.expectString (StoryImageFound home)
         }
