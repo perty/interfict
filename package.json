@@ -1,0 +1,14 @@
+{
+  "private": true,
+  "name": "template-frontend",
+  "scripts": {
+    "postinstall": "elm-tooling install",
+    "start": "elm-watch hot",
+    "build": "elm-watch make --optimize",
+    "test": "elm-test-rs"
+  },
+  "devDependencies": {
+    "elm-tooling": "^1.10.0",
+    "elm-watch": "^1.0.2"
+  }
+}
