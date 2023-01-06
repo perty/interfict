@@ -43,7 +43,7 @@ type alias Scene =
 
 type alias SceneOption =
     { optionText : String
-    , target : String
+    , target : Home
     }
 
 
@@ -81,6 +81,7 @@ type Message
     | StoryLoaded (Result Http.Error Story)
     | StoryTextLoaded Home (Result Http.Error StoryText)
     | StoryImageFound Home (Result Http.Error StoryImage)
+    | GotoScene Home
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -112,6 +113,9 @@ update message model =
         StoryImageFound _ (Err _) ->
             ( model, Cmd.none )
 
+        GotoScene home ->
+            ( { model | currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }, Cmd.none )
+
 
 view : Model -> Html Message
 view model =
@@ -142,12 +146,44 @@ viewStory model =
 
         content =
             Dict.get home model.texts |> Maybe.withDefault "??"
+
+        route =
+            model.currentScene |> Maybe.map .route |> Maybe.withDefault []
+
+        hasImage =
+            case Dict.get home model.images of
+                Just _ ->
+                    True
+
+                Nothing ->
+                    False
     in
     div []
-        [ img [ src ("/story/images/" ++ home ++ ".png"), style "width" "100%" ] []
+        [ if hasImage then
+            img [ src ("/story/images/" ++ home ++ ".png"), style "width" "100%" ] []
+
+          else
+            div [] []
         , h1 [ style "text-align" "center" ] [ text title ]
         , div [ style "margin" "5px" ] (textToParagraphs content)
+        , viewOptions route
         ]
+
+
+viewOptions : List SceneOption -> Html Message
+viewOptions sceneOptions =
+    div
+        [ style "display" "flex"
+        , style "width" "100%"
+        , style "justify-content" "space-evenly"
+        , style "padding-bottom" "50px"
+        ]
+        (List.map viewOption sceneOptions)
+
+
+viewOption : SceneOption -> Html Message
+viewOption sceneOption =
+    button [ onClick (GotoScene sceneOption.target) ] [ text sceneOption.optionText ]
 
 
 textToParagraphs : StoryText -> List (Html Message)
