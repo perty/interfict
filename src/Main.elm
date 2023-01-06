@@ -1,6 +1,7 @@
 module Main exposing (decodeStory, main)
 
 import Browser
+import Dict exposing (Dict)
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
 import Http
@@ -19,7 +20,9 @@ main =
 
 
 type alias Model =
-    { story : Story }
+    { story : Story
+    , texts : Dict Home StoryText
+    }
 
 
 type alias Story =
@@ -28,7 +31,7 @@ type alias Story =
 
 
 type alias Scene =
-    { home : String
+    { home : Home
     , name : String
     , route : List SceneOption
     }
@@ -40,14 +43,27 @@ type alias SceneOption =
     }
 
 
+type alias Home =
+    String
+
+
+type alias StoryText =
+    String
+
+
 init : flags -> ( Model, Cmd message )
 init _ =
-    ( { story = { scene = [] } }, Cmd.none )
+    ( { story = { scene = [] }
+      , texts = Dict.empty
+      }
+    , Cmd.none
+    )
 
 
 type Message
     = LoadStory
     | StoryLoaded (Result Http.Error Story)
+    | StoryTextLoaded Home (Result Http.Error StoryText)
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -57,9 +73,15 @@ update message model =
             ( model, getStory StoryLoaded )
 
         StoryLoaded (Ok story) ->
-            ( { model | story = story }, Cmd.none )
+            ( { model | story = story }, getStoryTexts story )
 
         StoryLoaded (Err _) ->
+            ( model, Cmd.none )
+
+        StoryTextLoaded home (Ok storyText) ->
+            ( { model | texts = Dict.insert home storyText model.texts }, Cmd.none )
+
+        StoryTextLoaded _ (Err _) ->
             ( model, Cmd.none )
 
 
@@ -100,6 +122,22 @@ decodeSceneOption =
 getStory : (Result Http.Error Story -> Message) -> Cmd Message
 getStory message =
     Http.get
-        { url = "/story/story.json"
+        { url = "/story/scenes.json"
         , expect = Http.expectJson message decodeStory
+        }
+
+
+getStoryTexts : Story -> Cmd Message
+getStoryTexts story =
+    story.scene
+        |> List.map .home
+        |> List.map getStoryText
+        |> Cmd.batch
+
+
+getStoryText : Home -> Cmd Message
+getStoryText home =
+    Http.get
+        { url = "/story/text/" ++ home ++ ".txt"
+        , expect = Http.expectString (StoryTextLoaded home)
         }

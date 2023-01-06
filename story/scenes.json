@@ -1,0 +1,108 @@
+{
+    "scene": [
+        {
+            "home": "intro",
+            "name": "Once upon a time",
+            "route": [
+			    {"optionText": "Back", "target": "go_back" },
+                {"optionText": "Look", "target": "butterfly"}
+            ]
+        },
+        {
+            "home": "go_back",
+            "name": "Go back",
+            "route": [
+			    {"optionText": "Hide", "target": "hide" },
+                {"optionText": "Cough", "target": "cough"}
+            ]
+        },		
+        {
+            "home": "hide",
+            "name": "Hiding",
+            "route": [
+			    {"optionText": "Talk", "target": "talk_disappear" },
+                {"optionText": "Stay hidden", "target": "stay_hidden"}
+            ]
+        },
+        {
+            "home": "cough",
+            "name": "Cough",
+            "route": [
+			    {"optionText": "Prove it", "target": "new_house" },
+                {"optionText": "You couldn't", "target": "new_house"}
+            ]
+        },
+        {
+            "home": "stay_hidden",
+            "name": "Stay hidden",
+            "route": [
+			    {"optionText": "How", "target": "new_house" },
+                {"optionText": "I sceptic", "target": "new_house"}
+            ]
+        },
+        {
+            "home": "new_house",
+            "name": "A new house",
+            "route": [
+			    {"optionText": "Say nothing", "target": "mother" },
+                {"optionText": "Run to mother", "target": "mother"}
+            ]
+        },				
+        {
+            "home": "butterfly",
+            "name": "Butterfly",
+            "route": [
+			    {"optionText": "Go on", "target": "go_on" },
+                {"optionText": "Go home", "target": "go_back"}
+            ]
+        },
+        {
+            "home": "go_on",
+            "name": "Go on",
+            "route": [
+			    {"optionText": "Talk?", "target": "talk_disappear" },
+                {"optionText": "Disappear", "target": "talk_disappear"}
+            ]
+        },
+        {
+            "home": "talk_disappear",
+            "name": "Falifa",
+            "route": [
+			    {"optionText": "", "target": "" },
+                {"optionText": "", "target": ""}
+            ]
+        },		
+        {
+            "home": "help",
+            "name": "Help",
+            "route": [
+			    {"optionText": "Run to father", "target": "father" },
+                {"optionText": "Say nothing", "target": "father"}
+            ]
+        },
+        {
+            "home": "manage",
+            "name": "Manage your own",
+            "route": [
+			    {"optionText": "Run to father", "target": "father" },
+                {"optionText": "Say nothing", "target": "father"}
+            ]
+        },
+        {
+            "home": "father",
+            "name": "Back home",
+            "route": [
+			    {"optionText": "End", "target": "father" },
+                {"optionText": "End", "target": "father"}
+            ]
+        },
+        {
+            "home": "mother",
+            "name": "Back home",
+            "route": [
+			    {"optionText": "End", "target": "mother" },
+                {"optionText": "End", "target": "mother"}
+            ]
+        }		
+   ]
+}
