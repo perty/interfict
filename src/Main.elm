@@ -4,6 +4,7 @@ import Browser
 import Html exposing (Html, button, div, text)
 import Html.Events exposing (onClick)
 import Json.Decode as Decode
+import Json.Decode.Pipeline exposing (required)
 
 
 main : Program () Model Message
@@ -81,6 +82,20 @@ subscriptions _ =
 
 decodeStory : Decode.Decoder Story
 decodeStory =
-    { scene = []
-    }
-        |> Decode.succeed
+    Decode.succeed Story
+        |> required "scene" (Decode.list decodeScene)
+
+
+decodeScene : Decode.Decoder Scene
+decodeScene =
+    Decode.succeed Scene
+        |> required "home" Decode.string
+        |> required "name" Decode.string
+        |> required "route" (Decode.list decodeSceneOption)
+
+
+decodeSceneOption : Decode.Decoder SceneOption
+decodeSceneOption =
+    Decode.succeed SceneOption
+        |> required "optionText" Decode.string
+        |> required "target" Decode.string
