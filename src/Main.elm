@@ -1,6 +1,7 @@
 module Main exposing (decodeStory, main)
 
-import Browser
+import Browser exposing (Document)
+import Browser.Navigation exposing (load, pushUrl)
 import Dict exposing (Dict)
 import Html exposing (Html, button, div, h1, img, p, text)
 import Html.Attributes exposing (src, style)
@@ -8,15 +9,18 @@ import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (required)
+import Url
 
 
 main : Program () Model Message
 main =
-    Browser.element
+    Browser.application
         { init = init
         , update = update
         , view = view
         , subscriptions = subscriptions
+        , onUrlChange = UrlChanged
+        , onUrlRequest = LinkClicked
         }
 
 
@@ -26,6 +30,8 @@ type alias Model =
     , images : Dict Home StoryImage
     , viewMode : ViewMode
     , currentScene : Maybe Scene
+    , key : Browser.Navigation.Key
+    , url : Url.Url
     }
 
 
@@ -64,13 +70,15 @@ type ViewMode
     | ViewStory
 
 
-init : flags -> ( Model, Cmd message )
-init _ =
+init : flags -> Url.Url -> Browser.Navigation.Key -> ( Model, Cmd message )
+init _ url key =
     ( { story = { scene = [] }
       , texts = Dict.empty
       , images = Dict.empty
       , viewMode = Library
       , currentScene = Nothing
+      , key = key
+      , url = url
       }
     , Cmd.none
     )
@@ -82,6 +90,8 @@ type Message
     | StoryTextLoaded Home (Result Http.Error StoryText)
     | StoryImageFound Home (Result Http.Error StoryImage)
     | GotoScene Home
+    | LinkClicked Browser.UrlRequest
+    | UrlChanged Url.Url
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -95,6 +105,7 @@ update message model =
             , Cmd.batch
                 [ getStoryTexts story
                 , getStoryImages story
+                , pushUrl model.key (List.head story.scene |> Maybe.map .home |> Maybe.withDefault "/")
                 ]
             )
 
@@ -114,22 +125,48 @@ update message model =
             ( model, Cmd.none )
 
         GotoScene home ->
-            ( { model | currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }, Cmd.none )
+            ( model
+            , pushUrl model.key home
+            )
+
+        LinkClicked urlRequest ->
+            case urlRequest of
+                Browser.Internal url ->
+                    ( model, pushUrl model.key (Url.toString url) )
+
+                Browser.External href ->
+                    ( model, load href )
+
+        UrlChanged url ->
+            let
+                home =
+                    String.split "/" (Url.toString url) |> List.reverse |> List.head |> Maybe.withDefault "???"
+            in
+            ( { model | url = url, currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }, Cmd.none )
 
 
-view : Model -> Html Message
+view : Model -> Document Message
 view model =
-    case model.viewMode of
-        Library ->
-            viewLibrary
+    { title = "Interactive Fiction"
+    , body =
+        [ case model.viewMode of
+            Library ->
+                viewLibrary
 
-        ViewStory ->
-            viewStory model
+            ViewStory ->
+                viewStory model
+        ]
+    }
 
 
 viewLibrary : Html.Html Message
 viewLibrary =
-    div [ style "width" "100%" ]
+    div
+        [ style "display" "flex"
+        , style "width" "100%"
+        , style "justify-content" "center"
+        , style "padding-top" "50px"
+        ]
         [ button [ onClick LoadStory ]
             [ text "Load" ]
         ]
@@ -238,7 +275,7 @@ getStoryTexts story =
 getStoryText : Home -> Cmd Message
 getStoryText home =
     Http.get
-        { url = "/story/text/" ++ home ++ ".txt"
+        { url = "story/text/" ++ home ++ ".txt"
         , expect = Http.expectString (StoryTextLoaded home)
         }
 
@@ -254,6 +291,6 @@ getStoryImages story =
 getStoryImage : Home -> Cmd Message
 getStoryImage home =
     Http.get
-        { url = "/story/images/" ++ home ++ ".png"
+        { url = "story/images/" ++ home ++ ".png"
         , expect = Http.expectString (StoryImageFound home)
         }
