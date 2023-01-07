@@ -1,1 +1,6 @@
-/* Intentionally empty */
+/* Defaults */
+
+button {
+    background-color: lightblue;
+    border-radius: 5px;
+}
