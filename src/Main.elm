@@ -2,7 +2,6 @@ module Main exposing (decodeStory, main)
 
 import Browser exposing (Document)
 import Browser.Dom as Dom
-import Browser.Navigation exposing (load, pushUrl)
 import Dict exposing (Dict)
 import Html exposing (Html, button, div, h1, img, p, text)
 import Html.Attributes exposing (src, style)
@@ -11,18 +10,15 @@ import Http
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (required)
 import Task
-import Url
 
 
 main : Program () Model Message
 main =
-    Browser.application
+    Browser.element
         { init = init
         , update = update
         , view = view
         , subscriptions = subscriptions
-        , onUrlChange = UrlChanged
-        , onUrlRequest = LinkClicked
         }
 
 
@@ -32,8 +28,6 @@ type alias Model =
     , images : Dict Home StoryImage
     , viewMode : ViewMode
     , currentScene : Maybe Scene
-    , key : Browser.Navigation.Key
-    , url : Url.Url
     }
 
 
@@ -72,15 +66,13 @@ type ViewMode
     | ViewStory
 
 
-init : flags -> Url.Url -> Browser.Navigation.Key -> ( Model, Cmd message )
-init _ url key =
+init : flags -> ( Model, Cmd message )
+init _ =
     ( { story = { scene = [] }
       , texts = Dict.empty
       , images = Dict.empty
       , viewMode = Library
       , currentScene = Nothing
-      , key = key
-      , url = url
       }
     , Cmd.none
     )
@@ -92,8 +84,6 @@ type Message
     | StoryTextLoaded Home (Result Http.Error StoryText)
     | StoryImageFound Home (Result Http.Error StoryImage)
     | GotoScene Home
-    | LinkClicked Browser.UrlRequest
-    | UrlChanged Url.Url
     | NoOp
 
 
@@ -108,7 +98,6 @@ update message model =
             , Cmd.batch
                 [ getStoryTexts story
                 , getStoryImages story
-                , pushUrl model.key (List.head story.scene |> Maybe.map .home |> Maybe.withDefault "/")
                 ]
             )
 
@@ -128,24 +117,7 @@ update message model =
             ( model, Cmd.none )
 
         GotoScene home ->
-            ( model
-            , pushUrl model.key home
-            )
-
-        LinkClicked urlRequest ->
-            case urlRequest of
-                Browser.Internal url ->
-                    ( model, pushUrl model.key (Url.toString url) )
-
-                Browser.External href ->
-                    ( model, load href )
-
-        UrlChanged url ->
-            let
-                home =
-                    String.split "/" (Url.toString url) |> List.reverse |> List.head |> Maybe.withDefault "???"
-            in
-            ( { model | url = url, currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }
+            ( { model | currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }
             , resetViewport
             )
 
@@ -158,18 +130,14 @@ resetViewport =
     Task.perform (\_ -> NoOp) (Dom.setViewport 0 0)
 
 
-view : Model -> Document Message
+view : Model -> Html Message
 view model =
-    { title = "Interactive Fiction"
-    , body =
-        [ case model.viewMode of
-            Library ->
-                viewLibrary
+    case model.viewMode of
+        Library ->
+            viewLibrary
 
-            ViewStory ->
-                viewStory model
-        ]
-    }
+        ViewStory ->
+            viewStory model
 
 
 viewLibrary : Html.Html Message
@@ -208,9 +176,12 @@ viewStory model =
                 Nothing ->
                     False
     in
-    div []
+    div
+        [ style "max-width" "600px"
+        , style "margin" "auto"
+        ]
         [ if hasImage then
-            img [ src ("/story/images/" ++ home ++ ".png"), style "width" "100%" ] []
+            img [ src ("story/images/" ++ home ++ ".png"), style "width" "100%" ] []
 
           else
             div [] []
@@ -272,7 +243,7 @@ decodeSceneOption =
 getStory : (Result Http.Error Story -> Message) -> Cmd Message
 getStory message =
     Http.get
-        { url = "/story/scenes.json"
+        { url = "story/scenes.json"
         , expect = Http.expectJson message decodeStory
         }
 
