@@ -1,4 +1,7 @@
 /* Defaults */
+html {
+    height: 100%
+}
 
 button {
     background-color: lightblue;

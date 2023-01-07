@@ -3,9 +3,9 @@ module Main exposing (decodeStory, main)
 import Browser exposing (Document)
 import Browser.Dom as Dom
 import Dict exposing (Dict)
-import Html exposing (Html, button, div, h1, img, p, text)
-import Html.Attributes exposing (src, style)
-import Html.Events exposing (onClick)
+import Html exposing (Html, button, div, h1, img, input, p, text)
+import Html.Attributes exposing (size, src, style, value)
+import Html.Events exposing (onClick, onInput)
 import Http
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (required)
@@ -27,6 +27,7 @@ type alias Model =
     , texts : Dict Home StoryText
     , images : Dict Home StoryImage
     , viewMode : ViewMode
+    , currentStoryLocation : StoryLocation
     , currentScene : Maybe Scene
     }
 
@@ -61,6 +62,10 @@ type alias StoryImage =
     String
 
 
+type alias StoryLocation =
+    String
+
+
 type ViewMode
     = Library
     | ViewStory
@@ -72,6 +77,7 @@ init _ =
       , texts = Dict.empty
       , images = Dict.empty
       , viewMode = Library
+      , currentStoryLocation = "https://artcomputer.se/interfict/story"
       , currentScene = Nothing
       }
     , Cmd.none
@@ -79,7 +85,8 @@ init _ =
 
 
 type Message
-    = LoadStory
+    = ChangeStoryLocation String
+    | LoadStory
     | StoryLoaded (Result Http.Error Story)
     | StoryTextLoaded Home (Result Http.Error StoryText)
     | StoryImageFound Home (Result Http.Error StoryImage)
@@ -90,14 +97,17 @@ type Message
 update : Message -> Model -> ( Model, Cmd Message )
 update message model =
     case message of
+        ChangeStoryLocation storyLocation ->
+            ( { model | currentStoryLocation = storyLocation }, Cmd.none )
+
         LoadStory ->
-            ( model, getStory StoryLoaded )
+            ( model, getStory model.currentStoryLocation StoryLoaded )
 
         StoryLoaded (Ok story) ->
             ( { model | story = story, viewMode = ViewStory, currentScene = List.head story.scene }
             , Cmd.batch
-                [ getStoryTexts story
-                , getStoryImages story
+                [ getStoryTexts model.currentStoryLocation story
+                , getStoryImages model.currentStoryLocation story
                 ]
             )
 
@@ -134,22 +144,37 @@ view : Model -> Html Message
 view model =
     case model.viewMode of
         Library ->
-            viewLibrary
+            viewLibrary model
 
         ViewStory ->
             viewStory model
 
 
-viewLibrary : Html.Html Message
-viewLibrary =
+viewLibrary : Model -> Html.Html Message
+viewLibrary model =
     div
         [ style "display" "flex"
-        , style "width" "100%"
-        , style "justify-content" "center"
-        , style "padding-top" "50px"
+        , style "flex-direction" "column"
+        , style "justify-content" "flex-start"
+        , style "max-width" "600px"
+        , style "height" "100%"
+        , style "margin" "auto"
+        , style "background-image" "url(assets/images/sky.png)"
+        , style "background-size" "cover"
+        , style "color" "lightgrey"
         ]
-        [ button [ onClick LoadStory ]
-            [ text "Load" ]
+        [ h1 [ style "text-align" "center" ] [ text "Welcome to the library" ]
+        , div
+            [ style "display" "flex"
+            , style "flex-wrap" "wrap"
+            , style "width" "100%"
+            , style "justify-content" "space-evenly"
+            ]
+            [ text "Load a story"
+            , input [ value model.currentStoryLocation, onInput ChangeStoryLocation, size 35 ] []
+            , button [ onClick LoadStory ]
+                [ text "Load" ]
+            ]
         ]
 
 
@@ -240,41 +265,41 @@ decodeSceneOption =
         |> required "target" Decode.string
 
 
-getStory : (Result Http.Error Story -> Message) -> Cmd Message
-getStory message =
+getStory : String -> (Result Http.Error Story -> Message) -> Cmd Message
+getStory storyLocation message =
     Http.get
-        { url = "story/scenes.json"
+        { url = storyLocation ++ "/scenes.json"
         , expect = Http.expectJson message decodeStory
         }
 
 
-getStoryTexts : Story -> Cmd Message
-getStoryTexts story =
+getStoryTexts : StoryLocation -> Story -> Cmd Message
+getStoryTexts storyLocation story =
     story.scene
         |> List.map .home
-        |> List.map getStoryText
+        |> List.map (getStoryText storyLocation)
         |> Cmd.batch
 
 
-getStoryText : Home -> Cmd Message
-getStoryText home =
+getStoryText : StoryLocation -> Home -> Cmd Message
+getStoryText storyLocation home =
     Http.get
-        { url = "story/text/" ++ home ++ ".txt"
+        { url = storyLocation ++ "/text/" ++ home ++ ".txt"
         , expect = Http.expectString (StoryTextLoaded home)
         }
 
 
-getStoryImages : Story -> Cmd Message
-getStoryImages story =
+getStoryImages : StoryLocation -> Story -> Cmd Message
+getStoryImages storyLocation story =
     story.scene
         |> List.map .home
-        |> List.map getStoryImage
+        |> List.map (getStoryImage storyLocation)
         |> Cmd.batch
 
 
-getStoryImage : Home -> Cmd Message
-getStoryImage home =
+getStoryImage : StoryLocation -> Home -> Cmd Message
+getStoryImage storyLocation home =
     Http.get
-        { url = "story/images/" ++ home ++ ".png"
+        { url = storyLocation ++ "/images/" ++ home ++ ".png"
         , expect = Http.expectString (StoryImageFound home)
         }
