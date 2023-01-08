@@ -3,6 +3,7 @@ module Main exposing (decodeStory, main)
 import Browser exposing (Document)
 import Browser.Dom as Dom
 import Dict exposing (Dict)
+import Editor
 import Html exposing (Html, button, div, h1, img, input, p, text)
 import Html.Attributes exposing (size, src, style, value)
 import Html.Events exposing (onClick, onInput)
@@ -29,6 +30,7 @@ type alias Model =
     , viewMode : ViewMode
     , currentStoryLocation : StoryLocation
     , currentScene : Maybe Scene
+    , editorModel : Editor.Model
     }
 
 
@@ -69,39 +71,53 @@ type alias StoryLocation =
 type ViewMode
     = Library
     | ViewStory
+    | ViewEditor
 
 
-init : flags -> ( Model, Cmd message )
+init : flags -> ( Model, Cmd Message )
 init _ =
+    let
+        ( editorModel, editorCmd ) =
+            Editor.init
+    in
     ( { story = { scene = [] }
       , texts = Dict.empty
       , images = Dict.empty
       , viewMode = Library
       , currentStoryLocation = "https://artcomputer.se/interfict/story"
       , currentScene = Nothing
+      , editorModel = editorModel
       }
-    , Cmd.none
+    , Cmd.map EditorMessage editorCmd
     )
 
 
 type Message
     = ChangeStoryLocation String
     | LoadStory
+    | LoadEditor
     | StoryLoaded (Result Http.Error Story)
     | StoryTextLoaded Home (Result Http.Error StoryText)
     | StoryImageFound Home (Result Http.Error StoryImage)
     | GotoScene Home
     | NoOp
+    | EditorMessage Editor.Message
 
 
 update : Message -> Model -> ( Model, Cmd Message )
 update message model =
     case message of
+        EditorMessage editorMessage ->
+            updateEditor editorMessage model
+
         ChangeStoryLocation storyLocation ->
             ( { model | currentStoryLocation = storyLocation }, Cmd.none )
 
         LoadStory ->
             ( model, getStory model.currentStoryLocation StoryLoaded )
+
+        LoadEditor ->
+            ( { model | viewMode = ViewEditor }, Cmd.none )
 
         StoryLoaded (Ok story) ->
             ( { model | story = story, viewMode = ViewStory, currentScene = List.head story.scene }
@@ -140,6 +156,17 @@ resetViewport =
     Task.perform (\_ -> NoOp) (Dom.setViewport 0 0)
 
 
+updateEditor : Editor.Message -> Model -> ( Model, Cmd Message )
+updateEditor message model =
+    let
+        ( editorModel, editorCommand ) =
+            Editor.update message model.editorModel
+    in
+    ( { model | editorModel = editorModel }
+    , Cmd.map EditorMessage editorCommand
+    )
+
+
 view : Model -> Html Message
 view model =
     case model.viewMode of
@@ -148,6 +175,9 @@ view model =
 
         ViewStory ->
             viewStory model
+
+        ViewEditor ->
+            Editor.view model.editorModel |> Html.map EditorMessage
 
 
 viewLibrary : Model -> Html.Html Message
@@ -172,8 +202,10 @@ viewLibrary model =
             ]
             [ text "Load a story"
             , input [ value model.currentStoryLocation, onInput ChangeStoryLocation, size 35 ] []
-            , button [ onClick LoadStory ]
-                [ text "Load" ]
+            , button [ onClick LoadStory ] [ text "Load" ]
+            ]
+        , div []
+            [ button [ onClick LoadEditor ] [ text "Edit" ]
             ]
         ]
 
@@ -206,7 +238,7 @@ viewStory model =
         , style "margin" "auto"
         ]
         [ if hasImage then
-            img [ src ("story/images/" ++ home ++ ".png"), style "width" "100%" ] []
+            img [ src (model.currentStoryLocation ++ "/images/" ++ home ++ ".png"), style "width" "100%" ] []
 
           else
             div [] []
@@ -239,9 +271,9 @@ textToParagraphs storyText =
         |> List.map (\s -> p [] [ text s ])
 
 
-subscriptions : Model -> Sub message
-subscriptions _ =
-    Sub.none
+subscriptions : Model -> Sub Message
+subscriptions model =
+    Editor.subscriptions model.editorModel |> Sub.map EditorMessage
 
 
 decodeStory : Decode.Decoder Story
