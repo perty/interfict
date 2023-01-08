@@ -88,10 +88,6 @@ node2 =
     }
 
 
-
--- Update
-
-
 update : Message -> Model -> ( Model, Cmd Message )
 update msg model =
     case msg of
@@ -172,10 +168,6 @@ fromScreen position zoom graphElementPosition =
         ((position.y - graphElementPosition.y) / graphPixelWidth * viewPortHeight / zoom)
 
 
-
--- View
-
-
 view : Model -> Html Message
 view model =
     div []
@@ -189,42 +181,13 @@ viewZoomControl model =
     input [ HA.type_ "range", HA.min "0.1", HA.max "10", HA.value (String.fromFloat model.scale), Html.Events.onInput SetZoom ] []
 
 
-
-{- Input.slider
-   [ Element.height (Element.px 30)
-   , Element.width (Element.px 100)
-   , Element.behindContent
-       (Element.el
-           [ Element.width Element.fill
-           , Element.height (Element.px 5)
-           , Element.centerY
-           , Background.color (rgb 0 0 0)
-           , Border.rounded 2
-           ]
-           Element.none
-       )
-   ]
-   { onChange = SetZoom
-   , label =
-       Input.labelAbove []
-           (text <| "Zoom " ++ String.fromFloat model.scale)
-   , min = 0.1
-   , max = 10
-   , step = Nothing
-   , value = model.scale
-   , thumb =
-       Input.defaultThumb
-   }
--}
-
-
 graphId =
     "graph"
 
 
 viewGraph : Model -> Html Message
 viewGraph model =
-    Html.div [ HA.id graphId ]
+    Html.div [ HA.id graphId, HA.style "border" "solid", HA.style "width" (String.fromInt graphPixelWidth ++ "px") ]
         [ svg
             [ width <| String.fromInt graphPixelWidth
             , height <| String.fromInt graphPixelHeight
