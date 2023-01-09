@@ -77,7 +77,7 @@ type ViewMode
 init : flags -> ( Model, Cmd Message )
 init _ =
     let
-        ( editorModel, editorCmd ) =
+        ( editorModel, _ ) =
             Editor.init
     in
     ( { story = { scene = [] }
@@ -88,7 +88,7 @@ init _ =
       , currentScene = Nothing
       , editorModel = editorModel
       }
-    , Cmd.map EditorMessage editorCmd
+    , Cmd.none
     )
 
 
@@ -117,7 +117,11 @@ update message model =
             ( model, getStory model.currentStoryLocation StoryLoaded )
 
         LoadEditor ->
-            ( { model | viewMode = ViewEditor }, Cmd.none )
+            let
+                ( editorModel, editorCmd ) =
+                    Editor.init
+            in
+            ( { model | viewMode = ViewEditor, editorModel = editorModel }, Cmd.map EditorMessage editorCmd )
 
         StoryLoaded (Ok story) ->
             ( { model | story = story, viewMode = ViewStory, currentScene = List.head story.scene }

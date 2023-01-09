@@ -22,11 +22,12 @@ type Message
     | DragStop NodeId Position
     | SetZoom String
     | GotDomElement (Result Browser.Dom.Error Browser.Dom.Element)
+    | WindowResize
 
 
 type alias Model =
     { scale : Float
-    , graphElementPosition : Position
+    , graphElement : GraphElement
     , clicked : Bool
     , dragState : DragState
     , nodes : Dict NodeId Node
@@ -43,9 +44,21 @@ type alias NodeId =
     Int
 
 
+type alias GraphElement =
+    { position : Position
+    , dimension : Dimension
+    }
+
+
 type alias Position =
     { x : Float
     , y : Float
+    }
+
+
+type alias Dimension =
+    { width : Float
+    , height : Float
     }
 
 
@@ -68,7 +81,7 @@ init =
 initialModel : Model
 initialModel =
     { scale = 1.0
-    , graphElementPosition = Position 0 0
+    , graphElement = { position = Position 0 0, dimension = Dimension 0 0 }
     , clicked = False
     , dragState = Static
     , nodes = Dict.fromList [ ( 1, node1 ), ( 2, node2 ) ]
@@ -102,7 +115,7 @@ update msg model =
         DragMove nodeId isDown pos ->
             let
                 newNode =
-                    Node (fromScreen pos model.scale model.graphElementPosition)
+                    Node (fromScreen pos model.scale model.graphElement)
             in
             ( { model
                 | nodes = Dict.insert nodeId newNode model.nodes
@@ -119,7 +132,7 @@ update msg model =
         DragStop nodeId pos ->
             let
                 newNode =
-                    Node (fromScreen pos model.scale model.graphElementPosition)
+                    Node (fromScreen pos model.scale model.graphElement)
             in
             ( { model | dragState = Static, nodes = Dict.insert nodeId newNode model.nodes }
             , Cmd.none
@@ -133,44 +146,56 @@ update msg model =
                 Just float ->
                     ( { model | scale = float }, Cmd.none )
 
+        WindowResize ->
+            ( model, Browser.Dom.getElement graphId |> Task.attempt GotDomElement )
+
         GotDomElement result ->
             case result of
                 Err _ ->
                     ( model, Cmd.none )
 
                 Ok domElement ->
-                    ( { model | graphElementPosition = Position domElement.element.x domElement.element.y }, Cmd.none )
+                    let
+                        side =
+                            Basics.min domElement.element.height domElement.element.width - 2
+                    in
+                    ( { model
+                        | graphElement =
+                            { position =
+                                { x = domElement.element.x
+                                , y = domElement.element.y
+                                }
+                            , dimension =
+                                { width = side
+                                , height = side
+                                }
+                            }
+                      }
+                    , Cmd.none
+                    )
 
 
 getNode nodes nodeId =
     Dict.get nodeId nodes |> Maybe.withDefault (Node (Position 0 0))
 
 
-graphPixelWidth =
-    500
-
-
-graphPixelHeight =
-    500
-
-
 viewPortWidth =
-    1000
+    100
 
 
 viewPortHeight =
-    1000
+    100
 
 
-fromScreen : Position -> Float -> Position -> Position
-fromScreen position zoom graphElementPosition =
-    Position ((position.x - graphElementPosition.x) / graphPixelWidth * viewPortWidth / zoom)
-        ((position.y - graphElementPosition.y) / graphPixelWidth * viewPortHeight / zoom)
+fromScreen : Position -> Float -> GraphElement -> Position
+fromScreen position zoom graphElement =
+    Position ((position.x - graphElement.position.x) / graphElement.dimension.width * viewPortWidth / zoom)
+        ((position.y - graphElement.position.y) / graphElement.dimension.height * viewPortHeight / zoom)
 
 
 view : Model -> Html Message
 view model =
-    div []
+    div [ HA.style "height" "100%" ]
         [ viewZoomControl model
         , viewGraph model
         ]
@@ -178,7 +203,16 @@ view model =
 
 viewZoomControl : Model -> Html Message
 viewZoomControl model =
-    input [ HA.type_ "range", HA.min "0.1", HA.max "10", HA.value (String.fromFloat model.scale), Html.Events.onInput SetZoom ] []
+    input
+        [ HA.type_ "range"
+        , HA.min "0.1"
+        , HA.max "10"
+        , HA.step "0.1"
+        , HA.value (String.fromFloat model.scale)
+        , Html.Events.onInput SetZoom
+        , HA.style "width" (String.fromFloat model.graphElement.dimension.width ++ "px")
+        ]
+        []
 
 
 graphId =
@@ -187,23 +221,39 @@ graphId =
 
 viewGraph : Model -> Html Message
 viewGraph model =
-    Html.div [ HA.id graphId, HA.style "border" "solid", HA.style "width" (String.fromInt graphPixelWidth ++ "px") ]
+    Html.div [ HA.id graphId, HA.style "width" "100%", HA.style "height" "100%" ]
         [ svg
-            [ width <| String.fromInt graphPixelWidth
-            , height <| String.fromInt graphPixelHeight
+            [ width <| String.fromFloat model.graphElement.dimension.width
+            , height <| String.fromFloat model.graphElement.dimension.height
             , viewBox <| "0 0 " ++ String.fromInt viewPortWidth ++ " " ++ String.fromInt viewPortHeight
             ]
-            [ Svg.g [ transform (scale model.scale) ]
-                (drawEdges model.edges model.nodes
-                    ++ drawNodes model.nodes
-                )
-            ]
+            (viewBoxBackground
+                :: [ Svg.g [ transform (scale model.scale) ]
+                        (drawEdges model.edges model.nodes
+                            ++ drawNodes model.nodes
+                        )
+                   ]
+            )
         ]
 
 
 scale : Float -> String
 scale zoom =
     "scale(" ++ String.fromFloat zoom ++ ", " ++ String.fromFloat zoom ++ ")"
+
+
+viewBoxBackground : Svg.Svg Message
+viewBoxBackground =
+    Svg.g []
+        [ Svg.rect
+            [ stroke "black"
+            , strokeWidth "0.1"
+            , width "100"
+            , height "100"
+            , fillOpacity "0.1"
+            ]
+            []
+        ]
 
 
 drawEdges : List Edge -> Dict NodeId Node -> List (Svg.Svg Message)
@@ -283,7 +333,7 @@ subscriptions : Model -> Sub Message
 subscriptions model =
     case model.dragState of
         Static ->
-            Sub.none
+            Browser.Events.onResize (\_ _ -> WindowResize)
 
         Moving id ->
             Sub.batch
