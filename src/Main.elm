@@ -74,24 +74,25 @@ update message model =
             ( { model | currentStoryLocation = storyLocation }, Cmd.none )
 
         LoadStory ->
-            ( model, StoryModel.getStory model.currentStoryLocation StoryLoaded )
+            ( { model | viewMode = ViewStory }, StoryModel.getStory model.currentStoryLocation StoryLoaded )
 
         LoadEditor ->
-            let
-                ( editorModel, editorCmd ) =
-                    Editor.init
-            in
-            ( { model | viewMode = ViewEditor, editorModel = editorModel }, Cmd.map EditorMessage editorCmd )
+            ( { model | viewMode = ViewEditor }, StoryModel.getStory model.currentStoryLocation StoryLoaded )
 
         StoryLoaded (Ok story) ->
+            let
+                ( _, editCmd ) =
+                    Editor.init
+            in
             ( { model
                 | storyModel = StoryModel.setStory model.storyModel story
-                , viewMode = ViewStory
+                , editorModel = Editor.setStory model.editorModel story
                 , currentScene = List.head story.scene
               }
             , Cmd.batch
                 [ getStoryTexts model.currentStoryLocation story
                 , getStoryImages model.currentStoryLocation story
+                , Cmd.map EditorMessage editCmd
                 ]
             )
 

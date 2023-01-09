@@ -1,4 +1,4 @@
-module Editor exposing (Message(..), Model, init, initialModel, subscriptions, update, view)
+module Editor exposing (Message(..), Model, init, initialModel, setStory, subscriptions, update, view)
 
 {-
    The editor lets you see the story as a network of connected nodes.
@@ -15,8 +15,9 @@ import Html exposing (Html, div, input)
 import Html.Attributes as HA
 import Html.Events
 import Json.Decode as Decode
+import StoryModel exposing (Home, Scene, Story)
 import Svg exposing (circle, path, svg)
-import Svg.Attributes exposing (cx, cy, d, fill, fillOpacity, height, id, r, startOffset, stroke, strokeOpacity, strokeWidth, style, transform, viewBox, width, xlinkHref)
+import Svg.Attributes exposing (cx, cy, d, fill, fillOpacity, height, id, r, startOffset, stroke, strokeOpacity, strokeWidth, style, transform, viewBox, width, x, xlinkHref, y)
 import Svg.Events exposing (onClick, onMouseDown)
 import Task
 
@@ -36,18 +37,23 @@ type alias Model =
     , graphElement : GraphElement
     , clicked : Bool
     , dragState : DragState
-    , nodes : Dict NodeId Node
+    , nodes : NodeGraph
     , edges : List Edge
     }
 
 
+type alias NodeGraph =
+    Dict NodeId Node
+
+
 type alias Node =
     { position : Position
+    , scene : Scene
     }
 
 
 type alias NodeId =
-    Int
+    Home
 
 
 type alias GraphElement =
@@ -90,21 +96,24 @@ initialModel =
     , graphElement = { position = Position 0 0, dimension = Dimension 0 0 }
     , clicked = False
     , dragState = Static
-    , nodes = Dict.fromList [ ( 1, node1 ), ( 2, node2 ) ]
-    , edges = [ Edge 1 2 ]
+    , nodes = Dict.empty
+    , edges = []
     }
 
 
-node1 : Node
-node1 =
-    { position = Position 50 50
-    }
+setStory : Model -> Story -> Model
+setStory model story =
+    let
+        mkPos : Int -> Position
+        mkPos n =
+            Position (10.0 * Basics.toFloat n) (10.0 * Basics.toFloat n)
 
-
-node2 : Node
-node2 =
-    { position = Position 75 75
-    }
+        newGraph =
+            story.scene
+                |> List.indexedMap (\n s -> ( s.home, { position = mkPos n, scene = s } ))
+                |> Dict.fromList
+    in
+    { model | nodes = newGraph }
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -120,11 +129,11 @@ update msg model =
 
         DragMove nodeId isDown pos ->
             let
-                newNode =
-                    Node (fromScreen pos model.scale model.graphElement)
+                newPos =
+                    fromScreen pos model.scale model.graphElement
             in
             ( { model
-                | nodes = Dict.insert nodeId newNode model.nodes
+                | nodes = updateNodePos nodeId newPos model.nodes
                 , dragState =
                     if isDown then
                         Moving nodeId
@@ -137,10 +146,13 @@ update msg model =
 
         DragStop nodeId pos ->
             let
-                newNode =
-                    Node (fromScreen pos model.scale model.graphElement)
+                newPos =
+                    fromScreen pos model.scale model.graphElement
             in
-            ( { model | dragState = Static, nodes = Dict.insert nodeId newNode model.nodes }
+            ( { model
+                | nodes = updateNodePos nodeId newPos model.nodes
+                , dragState = Static
+              }
             , Cmd.none
             )
 
@@ -181,14 +193,34 @@ update msg model =
                     )
 
 
+getNode : NodeGraph -> NodeId -> Node
 getNode nodes nodeId =
-    Dict.get nodeId nodes |> Maybe.withDefault (Node (Position 0 0))
+    Dict.get nodeId nodes |> Maybe.withDefault (Node (Position 0 0) emptyScene)
 
 
+emptyScene : Scene
+emptyScene =
+    { home = ""
+    , name = ""
+    , route = []
+    }
+
+
+updateNodePos : NodeId -> Position -> NodeGraph -> NodeGraph
+updateNodePos nodeId position nodeGraph =
+    let
+        currentNode =
+            getNode nodeGraph nodeId
+    in
+    Dict.insert nodeId { currentNode | position = position } nodeGraph
+
+
+viewPortWidth : number
 viewPortWidth =
     100
 
 
+viewPortHeight : number
 viewPortHeight =
     100
 
@@ -202,21 +234,21 @@ fromScreen position zoom graphElement =
 view : Model -> Html Message
 view model =
     div [ HA.style "height" "100%" ]
-        [ viewZoomControl model
+        [ viewZoomControl model.scale model.graphElement.dimension.width
         , viewGraph model
         ]
 
 
-viewZoomControl : Model -> Html Message
-viewZoomControl model =
+viewZoomControl : Float -> Float -> Html Message
+viewZoomControl scale_ width =
     input
         [ HA.type_ "range"
         , HA.min "0.1"
         , HA.max "10"
         , HA.step "0.1"
-        , HA.value (String.fromFloat model.scale)
+        , HA.value (String.fromFloat scale_)
         , Html.Events.onInput SetZoom
-        , HA.style "width" (String.fromFloat model.graphElement.dimension.width ++ "px")
+        , HA.style "width" (String.fromFloat width ++ "px")
         ]
         []
 
@@ -262,12 +294,12 @@ viewBoxBackground =
         ]
 
 
-drawEdges : List Edge -> Dict NodeId Node -> List (Svg.Svg Message)
+drawEdges : List Edge -> NodeGraph -> List (Svg.Svg Message)
 drawEdges edges dict =
     List.map (\e -> drawEdge e dict) edges
 
 
-drawEdge : Edge -> Dict NodeId Node -> Svg.Svg Message
+drawEdge : Edge -> NodeGraph -> Svg.Svg Message
 drawEdge edge nodes =
     let
         fromNode =
@@ -287,7 +319,7 @@ drawEdge edge nodes =
                 ++ String.fromFloat tn.position.y
 
         idString =
-            "edge" ++ String.fromInt edge.fromNode ++ "-" ++ String.fromInt edge.toNode
+            "edge" ++ edge.fromNode ++ "-" ++ edge.toNode
     in
     Svg.g []
         [ path
@@ -320,19 +352,28 @@ drawNodes dict =
 
 drawNode : NodeId -> Node -> Svg.Svg Message
 drawNode nodeId node =
-    circle
-        [ cx <| String.fromFloat node.position.x
-        , cy <| String.fromFloat node.position.y
-        , r "5"
-        , stroke "black"
-        , strokeWidth "0.4"
-        , strokeOpacity "0.5"
-        , fill "rgb(216,196,30)"
-        , fillOpacity "1"
-        , onClick ClickedCircle
-        , onMouseDown (DragStart nodeId)
+    Svg.g []
+        [ circle
+            [ cx <| String.fromFloat node.position.x
+            , cy <| String.fromFloat node.position.y
+            , r "5"
+            , stroke "black"
+            , strokeWidth "0.4"
+            , strokeOpacity "0.5"
+            , fill "rgb(216,196,30)"
+            , fillOpacity "1"
+            , onClick ClickedCircle
+            , onMouseDown (DragStart nodeId)
+            ]
+            []
+        , Svg.text_
+            [ x <| String.fromFloat (node.position.x - 4)
+            , y <| String.fromFloat (node.position.y + 1)
+            , style "font-size:2"
+            ]
+            [ Svg.text nodeId
+            ]
         ]
-        []
 
 
 subscriptions : Model -> Sub Message
