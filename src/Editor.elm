@@ -120,10 +120,40 @@ setStory model story =
                     (\s ->
                         s.route
                             |> List.map (\r -> Edge s.home r.target r.optionText)
+                            |> List.filter (\e -> String.length e.label > 0)
+                            |> mergeTargets
                     )
                 |> List.concat
     in
     { model | nodes = newGraph, edges = newEdges }
+
+
+mergeTargets : List Edge -> List Edge
+mergeTargets edges =
+    case edges of
+        [] ->
+            edges
+
+        head :: tail ->
+            let
+                newList =
+                    mergeTarget head tail
+            in
+            List.append newList (mergeTargets tail)
+
+
+mergeTarget : Edge -> List Edge -> List Edge
+mergeTarget edge edges =
+    case edges of
+        [] ->
+            [ edge ]
+
+        head :: tail ->
+            if head.toNode == edge.toNode then
+                { head | label = head.label ++ "/" ++ edge.label } :: tail
+
+            else
+                mergeTarget edge tail
 
 
 update : Message -> Model -> ( Model, Cmd Message )
