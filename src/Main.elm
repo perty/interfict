@@ -172,9 +172,7 @@ viewLibrary model =
             [ text "Load a story"
             , input [ value model.currentStoryLocation, onInput ChangeStoryLocation, size 35 ] []
             , button [ onClick LoadStory ] [ text "Load" ]
-            ]
-        , div []
-            [ button [ onClick LoadEditor ] [ text "Edit" ]
+            , button [ onClick LoadEditor ] [ text "Edit" ]
             ]
         ]
 
