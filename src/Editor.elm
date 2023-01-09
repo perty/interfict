@@ -15,7 +15,7 @@ import Html exposing (Html, div, input)
 import Html.Attributes as HA
 import Html.Events
 import Json.Decode as Decode
-import StoryModel exposing (Home, Scene, Story)
+import StoryModel exposing (Home, OptionText, Scene, Story)
 import Svg exposing (circle, path, svg)
 import Svg.Attributes exposing (cx, cy, d, fill, fillOpacity, height, id, r, startOffset, stroke, strokeOpacity, strokeWidth, style, transform, viewBox, width, x, xlinkHref, y)
 import Svg.Events exposing (onClick, onMouseDown)
@@ -77,6 +77,7 @@ type alias Dimension =
 type alias Edge =
     { fromNode : NodeId
     , toNode : NodeId
+    , label : OptionText
     }
 
 
@@ -112,8 +113,17 @@ setStory model story =
             story.scene
                 |> List.indexedMap (\n s -> ( s.home, { position = mkPos n, scene = s } ))
                 |> Dict.fromList
+
+        newEdges =
+            story.scene
+                |> List.map
+                    (\s ->
+                        s.route
+                            |> List.map (\r -> Edge s.home r.target r.optionText)
+                    )
+                |> List.concat
     in
-    { model | nodes = newGraph }
+    { model | nodes = newGraph, edges = newEdges }
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -338,9 +348,9 @@ drawEdge edge nodes =
             [ Svg.textPath
                 [ xlinkHref ("#" ++ idString)
                 , startOffset "20%"
-                , style "font-size:6"
+                , style "font-size:2"
                 ]
-                [ Svg.text "hej" ]
+                [ Svg.text edge.label ]
             ]
         ]
 

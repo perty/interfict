@@ -1,6 +1,7 @@
 module StoryModel exposing
     ( Home
     , Model
+    , OptionText
     , Scene
     , SceneOption
     , Story
@@ -47,7 +48,7 @@ type alias Scene =
 
 
 type alias SceneOption =
-    { optionText : String
+    { optionText : OptionText
     , target : Home
     }
 
@@ -65,6 +66,10 @@ type alias StoryImage =
 
 
 type alias StoryLocation =
+    String
+
+
+type alias OptionText =
     String
 
 
