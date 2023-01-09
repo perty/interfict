@@ -1,6 +1,12 @@
 module Editor exposing (Message(..), Model, init, initialModel, subscriptions, update, view)
 
--- To differentiate from SVG attributes, HA is used.
+{-
+   The editor lets you see the story as a network of connected nodes.
+
+   The graphical presentation is a separate structure, it has other concerns and it might be
+   necessary to have a story node on more than one place in the graphical view, for practical
+   purposes.
+-}
 
 import Browser.Dom
 import Browser.Events

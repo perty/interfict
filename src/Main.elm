@@ -1,15 +1,13 @@
-module Main exposing (decodeStory, main)
+module Main exposing (main)
 
 import Browser exposing (Document)
 import Browser.Dom as Dom
-import Dict exposing (Dict)
 import Editor
 import Html exposing (Html, button, div, h1, img, input, p, text)
 import Html.Attributes exposing (size, src, style, value)
 import Html.Events exposing (onClick, onInput)
 import Http
-import Json.Decode as Decode
-import Json.Decode.Pipeline exposing (required)
+import StoryModel exposing (Home, Scene, SceneOption, Story, StoryImage, StoryLocation, StoryText)
 import Task
 
 
@@ -24,48 +22,12 @@ main =
 
 
 type alias Model =
-    { story : Story
-    , texts : Dict Home StoryText
-    , images : Dict Home StoryImage
+    { storyModel : StoryModel.Model
     , viewMode : ViewMode
     , currentStoryLocation : StoryLocation
     , currentScene : Maybe Scene
     , editorModel : Editor.Model
     }
-
-
-type alias Story =
-    { scene : List Scene
-    }
-
-
-type alias Scene =
-    { home : Home
-    , name : String
-    , route : List SceneOption
-    }
-
-
-type alias SceneOption =
-    { optionText : String
-    , target : Home
-    }
-
-
-type alias Home =
-    String
-
-
-type alias StoryText =
-    String
-
-
-type alias StoryImage =
-    String
-
-
-type alias StoryLocation =
-    String
 
 
 type ViewMode
@@ -80,9 +42,7 @@ init _ =
         ( editorModel, _ ) =
             Editor.init
     in
-    ( { story = { scene = [] }
-      , texts = Dict.empty
-      , images = Dict.empty
+    ( { storyModel = StoryModel.init
       , viewMode = Library
       , currentStoryLocation = "https://artcomputer.se/interfict/story"
       , currentScene = Nothing
@@ -114,7 +74,7 @@ update message model =
             ( { model | currentStoryLocation = storyLocation }, Cmd.none )
 
         LoadStory ->
-            ( model, getStory model.currentStoryLocation StoryLoaded )
+            ( model, StoryModel.getStory model.currentStoryLocation StoryLoaded )
 
         LoadEditor ->
             let
@@ -124,7 +84,11 @@ update message model =
             ( { model | viewMode = ViewEditor, editorModel = editorModel }, Cmd.map EditorMessage editorCmd )
 
         StoryLoaded (Ok story) ->
-            ( { model | story = story, viewMode = ViewStory, currentScene = List.head story.scene }
+            ( { model
+                | storyModel = StoryModel.setStory model.storyModel story
+                , viewMode = ViewStory
+                , currentScene = List.head story.scene
+              }
             , Cmd.batch
                 [ getStoryTexts model.currentStoryLocation story
                 , getStoryImages model.currentStoryLocation story
@@ -135,19 +99,19 @@ update message model =
             ( model, Cmd.none )
 
         StoryTextLoaded home (Ok storyText) ->
-            ( { model | texts = Dict.insert home storyText model.texts }, Cmd.none )
+            ( { model | storyModel = StoryModel.setText model.storyModel home storyText }, Cmd.none )
 
         StoryTextLoaded _ (Err _) ->
             ( model, Cmd.none )
 
         StoryImageFound home (Ok _) ->
-            ( { model | images = Dict.insert home home model.images }, Cmd.none )
+            ( { model | storyModel = StoryModel.setImage model.storyModel home }, Cmd.none )
 
         StoryImageFound _ (Err _) ->
             ( model, Cmd.none )
 
         GotoScene home ->
-            ( { model | currentScene = model.story.scene |> List.filter (\scene -> scene.home == home) |> List.head }
+            ( { model | currentScene = StoryModel.getScene model.storyModel home }
             , resetViewport
             )
 
@@ -223,31 +187,20 @@ viewStory model =
         home =
             model.currentScene |> Maybe.map .home |> Maybe.withDefault "??"
 
-        content =
-            Dict.get home model.texts |> Maybe.withDefault "??"
-
         route =
             model.currentScene |> Maybe.map .route |> Maybe.withDefault []
-
-        hasImage =
-            case Dict.get home model.images of
-                Just _ ->
-                    True
-
-                Nothing ->
-                    False
     in
     div
         [ style "max-width" "600px"
         , style "margin" "auto"
         ]
-        [ if hasImage then
+        [ if StoryModel.hasImage model.storyModel home then
             img [ src (model.currentStoryLocation ++ "/images/" ++ home ++ ".png"), style "width" "100%" ] []
 
           else
             div [] []
         , h1 [ style "text-align" "center" ] [ text title ]
-        , div [ style "margin" "5px" ] (textToParagraphs content)
+        , div [ style "margin" "5px" ] (StoryModel.getText model.storyModel home |> textToParagraphs)
         , viewOptions route
         ]
 
@@ -278,35 +231,6 @@ textToParagraphs storyText =
 subscriptions : Model -> Sub Message
 subscriptions model =
     Editor.subscriptions model.editorModel |> Sub.map EditorMessage
-
-
-decodeStory : Decode.Decoder Story
-decodeStory =
-    Decode.succeed Story
-        |> required "scene" (Decode.list decodeScene)
-
-
-decodeScene : Decode.Decoder Scene
-decodeScene =
-    Decode.succeed Scene
-        |> required "home" Decode.string
-        |> required "name" Decode.string
-        |> required "route" (Decode.list decodeSceneOption)
-
-
-decodeSceneOption : Decode.Decoder SceneOption
-decodeSceneOption =
-    Decode.succeed SceneOption
-        |> required "optionText" Decode.string
-        |> required "target" Decode.string
-
-
-getStory : String -> (Result Http.Error Story -> Message) -> Cmd Message
-getStory storyLocation message =
-    Http.get
-        { url = storyLocation ++ "/scenes.json"
-        , expect = Http.expectJson message decodeStory
-        }
 
 
 getStoryTexts : StoryLocation -> Story -> Cmd Message
