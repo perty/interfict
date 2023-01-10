@@ -32,6 +32,9 @@ type Message
     | DragStart NodeId
     | DragMove NodeId Bool Position
     | DragStop NodeId Position
+    | PanStart
+    | PanMove Bool Position
+    | PanStop Position
     | SetZoom String
     | GotDomElement (Result Browser.Dom.Error Browser.Dom.Element)
     | WindowResize
@@ -42,12 +45,18 @@ type Message
 
 
 type alias Model =
-    { scale : Float
+    { transform : Transform
     , graphElement : GraphElement
     , clicked : Bool
     , dragState : DragState
     , graph : NodeGraph
     , decodeError : Maybe Decode.Error
+    }
+
+
+type alias Transform =
+    { scale : Float
+    , translate : Position
     }
 
 
@@ -99,6 +108,7 @@ type alias Edge =
 type DragState
     = Static
     | Moving NodeId
+    | Panning Position
 
 
 port storeGraph : String -> Cmd msg
@@ -117,7 +127,10 @@ init =
 
 initialModel : Model
 initialModel =
-    { scale = 1.0
+    { transform =
+        { scale = 1.0
+        , translate = Position 0 0
+        }
     , graphElement = { position = Position 0 0, dimension = Dimension 0 0 }
     , clicked = False
     , dragState = Static
@@ -202,7 +215,7 @@ update msg model =
         DragMove nodeId isDown pos ->
             let
                 newPos =
-                    fromScreen pos model.scale model.graphElement
+                    fromScreen pos model.transform model.graphElement
 
                 currentGraph =
                     model.graph
@@ -222,7 +235,7 @@ update msg model =
         DragStop nodeId pos ->
             let
                 newPos =
-                    fromScreen pos model.scale model.graphElement
+                    fromScreen pos model.transform model.graphElement
 
                 currentGraph =
                     model.graph
@@ -233,6 +246,51 @@ update msg model =
               }
             , storeGraph (encodeGraph model.graph)
             )
+
+        PanStart ->
+            ( { model | dragState = Panning (Position 0 0) }
+            , Cmd.none
+            )
+
+        PanMove isDown pos ->
+            let
+                previousPosition =
+                    case model.dragState of
+                        Panning p ->
+                            p
+
+                        _ ->
+                            Position 0 0
+
+                deltaPos =
+                    Position (previousPosition.x - pos.x) (previousPosition.y - pos.y)
+
+                newDragState =
+                    if isDown then
+                        Panning pos
+
+                    else
+                        Static
+
+                currentTransform =
+                    model.transform
+            in
+            if previousPosition.x == 0 then
+                ( { model | dragState = newDragState }, Cmd.none )
+
+            else
+                ( { model
+                    | transform =
+                        { currentTransform
+                            | translate = Position (model.transform.translate.x - deltaPos.x) (model.transform.translate.y - deltaPos.y)
+                        }
+                    , dragState = newDragState
+                  }
+                , Cmd.none
+                )
+
+        PanStop _ ->
+            ( model, Cmd.none )
 
         GraphLoaded json ->
             case Decode.decodeString decodeGraph json of
@@ -252,12 +310,16 @@ update msg model =
             ( model, Task.perform GraphLoaded (File.toString file) )
 
         SetZoom floatString ->
+            let
+                currentTransform =
+                    model.transform
+            in
             case String.toFloat floatString of
                 Nothing ->
                     ( model, Cmd.none )
 
                 Just float ->
-                    ( { model | scale = float }, Cmd.none )
+                    ( { model | transform = { currentTransform | scale = float } }, Cmd.none )
 
         WindowResize ->
             ( model, getDrawingArea )
@@ -320,10 +382,22 @@ viewPortHeight =
     100
 
 
-fromScreen : Position -> Float -> GraphElement -> Position
-fromScreen position zoom graphElement =
-    Position ((position.x - graphElement.position.x) / graphElement.dimension.width * viewPortWidth / zoom)
-        ((position.y - graphElement.position.y) / graphElement.dimension.height * viewPortHeight / zoom)
+fromScreen : Position -> Transform -> GraphElement -> Position
+fromScreen mouse transform graphElement =
+    let
+        posX =
+            (mouse.x - graphElement.position.x) / graphElement.dimension.width * viewPortWidth
+
+        newX =
+            (posX / transform.scale) - transform.translate.x
+
+        posY =
+            (mouse.y - graphElement.position.y) / graphElement.dimension.height * viewPortHeight
+
+        newY =
+            (posY / transform.scale) - transform.translate.y
+    in
+    Position newX newY
 
 
 view : Model -> Html Message
@@ -331,7 +405,7 @@ view model =
     div [ HA.style "height" "100%" ]
         [ div [ HA.style "width" (String.fromFloat model.graphElement.dimension.width ++ "px") ]
             [ viewCommandBar
-            , viewZoomControl model.scale
+            , viewZoomControl model.transform.scale
             ]
         , viewGraph model
         ]
@@ -376,7 +450,13 @@ viewGraph model =
             , viewBox <| "0 0 " ++ String.fromInt viewPortWidth ++ " " ++ String.fromInt viewPortHeight
             ]
             (viewBoxBackground
-                :: [ Svg.g [ transform (scale model.scale) ]
+                :: [ Svg.g
+                        [ transform
+                            (scale model.transform.scale
+                                ++ ","
+                                ++ translate model.transform.translate
+                            )
+                        ]
                         (drawEdges model.graph
                             ++ drawNodes model.graph.nodes
                         )
@@ -390,6 +470,11 @@ scale zoom =
     "scale(" ++ String.fromFloat zoom ++ ", " ++ String.fromFloat zoom ++ ")"
 
 
+translate : Position -> String
+translate translation =
+    "translate(" ++ String.fromFloat translation.x ++ ", " ++ String.fromFloat translation.y ++ ")"
+
+
 viewBoxBackground : Svg.Svg Message
 viewBoxBackground =
     Svg.g []
@@ -399,6 +484,7 @@ viewBoxBackground =
             , width "100"
             , height "100"
             , fillOpacity "0.1"
+            , onMouseDown PanStart
             ]
             []
         ]
@@ -499,6 +585,12 @@ subscriptions model =
             Sub.batch
                 [ Browser.Events.onMouseMove (Decode.map2 (DragMove id) decodeButtons decodeMousePosition)
                 , Browser.Events.onMouseUp (Decode.map (DragStop id) decodeMousePosition)
+                ]
+
+        Panning _ ->
+            Sub.batch
+                [ Browser.Events.onMouseMove (Decode.map2 PanMove decodeButtons decodeMousePosition)
+                , Browser.Events.onMouseUp (Decode.map PanStop decodeMousePosition)
                 ]
 
 
