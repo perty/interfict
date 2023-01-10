@@ -241,6 +241,8 @@ helpText =
 
     The slider on the top of the editor is a zoom control.
 
+    You can pan the view by dragging the background.
+
     The editor is resizing itself with the window but stays square.
     """
 
