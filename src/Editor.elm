@@ -11,7 +11,8 @@ port module Editor exposing (Message(..), Model, graphLoaded, init, initialModel
 import Browser.Dom
 import Browser.Events
 import Dict exposing (Dict)
-import Html exposing (Html, div, input)
+import File.Download
+import Html exposing (Html, button, div, input)
 import Html.Attributes as HA
 import Html.Events
 import Json.Decode as Decode
@@ -33,6 +34,7 @@ type Message
     | GotDomElement (Result Browser.Dom.Error Browser.Dom.Element)
     | WindowResize
     | GraphLoadedFromLocalStorage String
+    | DumpGraph
 
 
 type alias Model =
@@ -236,6 +238,9 @@ update msg model =
                 Err error ->
                     ( { model | decodeError = Just error }, Cmd.none )
 
+        DumpGraph ->
+            ( model, File.Download.string "graph.json" "application/json" (encodeGraph model.graph) )
+
         SetZoom floatString ->
             case String.toFloat floatString of
                 Nothing ->
@@ -314,13 +319,21 @@ fromScreen position zoom graphElement =
 view : Model -> Html Message
 view model =
     div [ HA.style "height" "100%" ]
-        [ viewZoomControl model.scale model.graphElement.dimension.width
+        [ div [ HA.style "width" (String.fromFloat model.graphElement.dimension.width ++ "px") ]
+            [ viewCommandBar
+            , viewZoomControl model.scale
+            ]
         , viewGraph model
         ]
 
 
-viewZoomControl : Float -> Float -> Html Message
-viewZoomControl scale_ width =
+viewCommandBar : Html Message
+viewCommandBar =
+    div [] [ button [ onClick DumpGraph ] [ Html.text "Dump" ] ]
+
+
+viewZoomControl : Float -> Html Message
+viewZoomControl scale_ =
     input
         [ HA.type_ "range"
         , HA.min "0.1"
@@ -328,7 +341,7 @@ viewZoomControl scale_ width =
         , HA.step "0.1"
         , HA.value (String.fromFloat scale_)
         , Html.Events.onInput SetZoom
-        , HA.style "width" (String.fromFloat width ++ "px")
+        , HA.style "width" "100%"
         ]
         []
 
