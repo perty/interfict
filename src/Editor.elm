@@ -11,7 +11,9 @@ port module Editor exposing (Message(..), Model, graphLoaded, init, initialModel
 import Browser.Dom
 import Browser.Events
 import Dict exposing (Dict)
+import File exposing (File)
 import File.Download
+import File.Select
 import Html exposing (Html, button, div, input)
 import Html.Attributes as HA
 import Html.Events
@@ -33,8 +35,10 @@ type Message
     | SetZoom String
     | GotDomElement (Result Browser.Dom.Error Browser.Dom.Element)
     | WindowResize
-    | GraphLoadedFromLocalStorage String
-    | DumpGraph
+    | GraphLoaded String
+    | DumpEditSession
+    | RequestUploadSession
+    | EditSessionSelected File
 
 
 type alias Model =
@@ -230,7 +234,7 @@ update msg model =
             , storeGraph (encodeGraph model.graph)
             )
 
-        GraphLoadedFromLocalStorage json ->
+        GraphLoaded json ->
             case Decode.decodeString decodeGraph json of
                 Ok graph ->
                     ( { model | graph = graph }, getDrawingArea )
@@ -238,8 +242,14 @@ update msg model =
                 Err error ->
                     ( { model | decodeError = Just error }, Cmd.none )
 
-        DumpGraph ->
+        DumpEditSession ->
             ( model, File.Download.string "graph.json" "application/json" (encodeGraph model.graph) )
+
+        RequestUploadSession ->
+            ( model, File.Select.file [ "application/json" ] EditSessionSelected )
+
+        EditSessionSelected file ->
+            ( model, Task.perform GraphLoaded (File.toString file) )
 
         SetZoom floatString ->
             case String.toFloat floatString of
@@ -329,7 +339,14 @@ view model =
 
 viewCommandBar : Html Message
 viewCommandBar =
-    div [] [ button [ onClick DumpGraph ] [ Html.text "Dump" ] ]
+    div
+        [ HA.style "display" "flex"
+        , HA.style "justify-content" "space-evenly"
+        , HA.style "padding" "5px"
+        ]
+        [ button [ onClick DumpEditSession ] [ Html.text "Dump session" ]
+        , button [ onClick RequestUploadSession ] [ Html.text "Upload session" ]
+        ]
 
 
 viewZoomControl : Float -> Html Message
@@ -475,7 +492,7 @@ subscriptions model =
         Static ->
             Sub.batch
                 [ Browser.Events.onResize (\_ _ -> WindowResize)
-                , graphLoaded GraphLoadedFromLocalStorage
+                , graphLoaded GraphLoaded
                 ]
 
         Moving id ->
