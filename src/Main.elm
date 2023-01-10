@@ -3,7 +3,7 @@ module Main exposing (main)
 import Browser exposing (Document)
 import Browser.Dom as Dom
 import Editor
-import Html exposing (Html, button, div, h1, img, input, p, text)
+import Html exposing (Html, button, div, h1, h3, img, input, p, text)
 import Html.Attributes exposing (size, src, style, value)
 import Html.Events exposing (onClick, onInput)
 import Http
@@ -26,6 +26,7 @@ type alias Model =
     , viewMode : ViewMode
     , currentStoryLocation : StoryLocation
     , currentScene : Maybe Scene
+    , showHelp : Bool
     , editorModel : Editor.Model
     }
 
@@ -46,6 +47,7 @@ init _ =
       , viewMode = Library
       , currentStoryLocation = "https://artcomputer.se/interfict/story"
       , currentScene = Nothing
+      , showHelp = False
       , editorModel = editorModel
       }
     , Cmd.none
@@ -56,13 +58,14 @@ type Message
     = ChangeStoryLocation String
     | LoadStory
     | LoadEditor
-    | ReloadEditor
+    | ReloadEditorSession
     | StoryLoaded (Result Http.Error Story)
     | StoryTextLoaded Home (Result Http.Error StoryText)
     | StoryImageFound Home (Result Http.Error StoryImage)
     | GotoScene Home
     | NoOp
     | EditorMessage Editor.Message
+    | ToggleHelp
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -80,7 +83,7 @@ update message model =
         LoadEditor ->
             ( { model | viewMode = ViewEditor }, StoryModel.getStory model.currentStoryLocation StoryLoaded )
 
-        ReloadEditor ->
+        ReloadEditorSession ->
             ( { model | viewMode = ViewEditor }, Editor.loadGraph () )
 
         StoryLoaded (Ok story) ->
@@ -122,6 +125,9 @@ update message model =
 
         NoOp ->
             ( model, Cmd.none )
+
+        ToggleHelp ->
+            ( { model | showHelp = not model.showHelp }, Cmd.none )
 
 
 resetViewport : Cmd Message
@@ -181,10 +187,62 @@ viewLibrary model =
         , div
             [ style "display" "flex"
             , style "justify-content" "flex-end"
-            , style "padding" "50px"
+            , style "padding-top" "50px"
+            , style "padding-right" "50px"
             ]
-            [ button [ onClick ReloadEditor ] [ text "Reload editing" ] ]
+            [ button [ onClick ReloadEditorSession ] [ text "Reload editing session" ] ]
+        , if model.showHelp then
+            viewHelp
+
+          else
+            div
+                [ style "position" "relative"
+                , style "left" "250px"
+                ]
+                [ button [ onClick ToggleHelp, style "font-size" "x-large" ] [ text "?" ]
+                ]
         ]
+
+
+viewHelp : Html Message
+viewHelp =
+    div
+        [ style "background-color" "white"
+        , style "max-width" "75%"
+        , style "color" "darkgrey"
+        , style "margin" "auto"
+        , style "border-radius" "10px"
+        , style "padding" "10px"
+        ]
+        ([ h3 [] [ text "Help" ] ]
+            ++ textToParagraphs helpText
+            ++ [ button [ onClick ToggleHelp ] [ text "Close" ] ]
+        )
+
+
+helpText : String
+helpText =
+    """
+    This is a reader and editor for interactive fiction, also called
+    create your own adventure. The reader is started by loading the story
+    from an URL. An example is provided.
+
+    The editor allows you to see a graphical presentation of the possible
+    paths through the story. If you never edited the story, the initial
+    position of the nodes is set along a line from top left to bottom right.
+
+    As soon as you change the position of a node by dragging it, the position
+    is stored in your browser. To continue from that, use reload editing session
+    button on the first page.
+
+    If you like to store your editing session on file, there is a button
+    inside the editor to download it as a json file.
+    Conversely, you may upload a session from a file.
+
+    The slider on the top of the editor is a zoom control.
+
+    The editor is resizing itself with the window but stays square.
+    """
 
 
 viewStory : Model -> Html Message
