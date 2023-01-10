@@ -8,6 +8,7 @@ module StoryModel exposing
     , StoryImage
     , StoryLocation
     , StoryText
+    , decodeScene
     , encodeScene
     , getScene
     , getStory

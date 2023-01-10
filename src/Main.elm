@@ -56,6 +56,7 @@ type Message
     = ChangeStoryLocation String
     | LoadStory
     | LoadEditor
+    | ReloadEditor
     | StoryLoaded (Result Http.Error Story)
     | StoryTextLoaded Home (Result Http.Error StoryText)
     | StoryImageFound Home (Result Http.Error StoryImage)
@@ -78,6 +79,9 @@ update message model =
 
         LoadEditor ->
             ( { model | viewMode = ViewEditor }, StoryModel.getStory model.currentStoryLocation StoryLoaded )
+
+        ReloadEditor ->
+            ( { model | viewMode = ViewEditor }, Editor.loadGraph () )
 
         StoryLoaded (Ok story) ->
             let
@@ -174,6 +178,12 @@ viewLibrary model =
             , button [ onClick LoadStory ] [ text "Load" ]
             , button [ onClick LoadEditor ] [ text "Edit" ]
             ]
+        , div
+            [ style "display" "flex"
+            , style "justify-content" "flex-end"
+            , style "padding" "50px"
+            ]
+            [ button [ onClick ReloadEditor ] [ text "Reload editing" ] ]
         ]
 
 

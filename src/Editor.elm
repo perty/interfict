@@ -1,4 +1,4 @@
-port module Editor exposing (Message(..), Model, init, initialModel, setStory, storeGraph, subscriptions, update, view)
+port module Editor exposing (Message(..), Model, graphLoaded, init, initialModel, loadGraph, setStory, storeGraph, subscriptions, update, view)
 
 {-
    The editor lets you see the story as a network of connected nodes.
@@ -15,6 +15,7 @@ import Html exposing (Html, div, input)
 import Html.Attributes as HA
 import Html.Events
 import Json.Decode as Decode
+import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 import StoryModel exposing (Home, OptionText, Scene, Story)
 import Svg exposing (circle, path, svg)
@@ -31,6 +32,7 @@ type Message
     | SetZoom String
     | GotDomElement (Result Browser.Dom.Error Browser.Dom.Element)
     | WindowResize
+    | GraphLoadedFromLocalStorage String
 
 
 type alias Model =
@@ -39,6 +41,7 @@ type alias Model =
     , clicked : Bool
     , dragState : DragState
     , graph : NodeGraph
+    , decodeError : Maybe Decode.Error
     }
 
 
@@ -95,9 +98,15 @@ type DragState
 port storeGraph : String -> Cmd msg
 
 
+port loadGraph : () -> Cmd msg
+
+
+port graphLoaded : (String -> msg) -> Sub msg
+
+
 init : ( Model, Cmd Message )
 init =
-    ( initialModel, Browser.Dom.getElement graphId |> Task.attempt GotDomElement )
+    ( initialModel, getDrawingArea )
 
 
 initialModel : Model
@@ -110,7 +119,13 @@ initialModel =
         { nodes = Dict.empty
         , edges = []
         }
+    , decodeError = Nothing
     }
+
+
+getDrawingArea : Cmd Message
+getDrawingArea =
+    Browser.Dom.getElement graphId |> Task.attempt GotDomElement
 
 
 setStory : Model -> Story -> Model
@@ -213,6 +228,14 @@ update msg model =
             , storeGraph (encodeGraph model.graph)
             )
 
+        GraphLoadedFromLocalStorage json ->
+            case Decode.decodeString decodeGraph json of
+                Ok graph ->
+                    ( { model | graph = graph }, getDrawingArea )
+
+                Err error ->
+                    ( { model | decodeError = Just error }, Cmd.none )
+
         SetZoom floatString ->
             case String.toFloat floatString of
                 Nothing ->
@@ -222,7 +245,7 @@ update msg model =
                     ( { model | scale = float }, Cmd.none )
 
         WindowResize ->
-            ( model, Browser.Dom.getElement graphId |> Task.attempt GotDomElement )
+            ( model, getDrawingArea )
 
         GotDomElement result ->
             case result of
@@ -437,17 +460,20 @@ subscriptions : Model -> Sub Message
 subscriptions model =
     case model.dragState of
         Static ->
-            Browser.Events.onResize (\_ _ -> WindowResize)
+            Sub.batch
+                [ Browser.Events.onResize (\_ _ -> WindowResize)
+                , graphLoaded GraphLoadedFromLocalStorage
+                ]
 
         Moving id ->
             Sub.batch
-                [ Browser.Events.onMouseMove (Decode.map2 (DragMove id) decodeButtons decodePosition)
-                , Browser.Events.onMouseUp (Decode.map (DragStop id) decodePosition)
+                [ Browser.Events.onMouseMove (Decode.map2 (DragMove id) decodeButtons decodeMousePosition)
+                , Browser.Events.onMouseUp (Decode.map (DragStop id) decodeMousePosition)
                 ]
 
 
-decodePosition : Decode.Decoder Position
-decodePosition =
+decodeMousePosition : Decode.Decoder Position
+decodeMousePosition =
     Decode.map2 Position decodeFractionX decodeFractionY
 
 
@@ -469,19 +495,32 @@ decodeButtons =
 encodeGraph : NodeGraph -> String
 encodeGraph graph =
     Encode.object
-        [ ( "nodes", Encode.list encodeNode (Dict.toList graph.nodes) )
+        [ ( "nodes", Encode.dict identity encodeNode graph.nodes )
         , ( "edges", Encode.list encodeEdge graph.edges )
         ]
         |> Encode.encode 0
 
 
-encodeNode : ( Home, Node ) -> Encode.Value
-encodeNode ( home, node ) =
+decodeGraph : Decode.Decoder NodeGraph
+decodeGraph =
+    Decode.succeed NodeGraph
+        |> required "nodes" (Decode.dict decodeNode)
+        |> required "edges" (Decode.list decodeEdge)
+
+
+encodeNode : Node -> Encode.Value
+encodeNode node =
     Encode.object
-        [ ( "home", Encode.string home )
-        , ( "position", encodePosition node.position )
+        [ ( "position", encodePosition node.position )
         , ( "scene", StoryModel.encodeScene node.scene )
         ]
+
+
+decodeNode : Decode.Decoder Node
+decodeNode =
+    Decode.succeed Node
+        |> required "position" decodePosition
+        |> required "scene" StoryModel.decodeScene
 
 
 encodePosition : Position -> Encode.Value
@@ -492,6 +531,13 @@ encodePosition position =
         ]
 
 
+decodePosition : Decode.Decoder Position
+decodePosition =
+    Decode.succeed Position
+        |> required "x" Decode.float
+        |> required "y" Decode.float
+
+
 encodeEdge : Edge -> Encode.Value
 encodeEdge edge =
     Encode.object
@@ -499,3 +545,11 @@ encodeEdge edge =
         , ( "toNode", Encode.string edge.toNode )
         , ( "label", Encode.string edge.label )
         ]
+
+
+decodeEdge : Decode.Decoder Edge
+decodeEdge =
+    Decode.succeed Edge
+        |> required "fromNode" Decode.string
+        |> required "toNode" Decode.string
+        |> required "label" Decode.string

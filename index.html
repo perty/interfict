@@ -15,8 +15,11 @@
         if (posts.length > 0) {
             var postsJson = JSON.stringify(posts);
             localStorage.setItem('currentGraph', postsJson);
-            console.log("Saved state: ", postsJson);
         }
+    });
+    app.ports.loadGraph.subscribe(function () {
+        const storedGraph = localStorage.getItem('currentGraph');
+        app.ports.graphLoaded.send(storedGraph ? JSON.parse(storedGraph) : "");
     });
 </script>
 </body>
