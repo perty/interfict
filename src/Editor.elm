@@ -1,4 +1,4 @@
-module Editor exposing (Message(..), Model, init, initialModel, setStory, subscriptions, update, view)
+port module Editor exposing (Message(..), Model, init, initialModel, setStory, storeGraph, subscriptions, update, view)
 
 {-
    The editor lets you see the story as a network of connected nodes.
@@ -15,6 +15,7 @@ import Html exposing (Html, div, input)
 import Html.Attributes as HA
 import Html.Events
 import Json.Decode as Decode
+import Json.Encode as Encode
 import StoryModel exposing (Home, OptionText, Scene, Story)
 import Svg exposing (circle, path, svg)
 import Svg.Attributes exposing (cx, cy, d, fill, fillOpacity, height, id, r, startOffset, stroke, strokeOpacity, strokeWidth, style, transform, viewBox, width, x, xlinkHref, y)
@@ -37,12 +38,17 @@ type alias Model =
     , graphElement : GraphElement
     , clicked : Bool
     , dragState : DragState
-    , nodes : NodeGraph
-    , edges : List Edge
+    , graph : NodeGraph
     }
 
 
 type alias NodeGraph =
+    { nodes : Nodes
+    , edges : List Edge
+    }
+
+
+type alias Nodes =
     Dict NodeId Node
 
 
@@ -86,6 +92,9 @@ type DragState
     | Moving NodeId
 
 
+port storeGraph : String -> Cmd msg
+
+
 init : ( Model, Cmd Message )
 init =
     ( initialModel, Browser.Dom.getElement graphId |> Task.attempt GotDomElement )
@@ -97,8 +106,10 @@ initialModel =
     , graphElement = { position = Position 0 0, dimension = Dimension 0 0 }
     , clicked = False
     , dragState = Static
-    , nodes = Dict.empty
-    , edges = []
+    , graph =
+        { nodes = Dict.empty
+        , edges = []
+        }
     }
 
 
@@ -125,7 +136,7 @@ setStory model story =
                     )
                 |> List.concat
     in
-    { model | nodes = newGraph, edges = newEdges }
+    { model | graph = { nodes = newGraph, edges = newEdges } }
 
 
 mergeTargets : List Edge -> List Edge
@@ -171,9 +182,12 @@ update msg model =
             let
                 newPos =
                     fromScreen pos model.scale model.graphElement
+
+                currentGraph =
+                    model.graph
             in
             ( { model
-                | nodes = updateNodePos nodeId newPos model.nodes
+                | graph = { currentGraph | nodes = updateNodePos nodeId newPos model.graph.nodes }
                 , dragState =
                     if isDown then
                         Moving nodeId
@@ -188,12 +202,15 @@ update msg model =
             let
                 newPos =
                     fromScreen pos model.scale model.graphElement
+
+                currentGraph =
+                    model.graph
             in
             ( { model
-                | nodes = updateNodePos nodeId newPos model.nodes
+                | graph = { currentGraph | nodes = updateNodePos nodeId newPos model.graph.nodes }
                 , dragState = Static
               }
-            , Cmd.none
+            , storeGraph (encodeGraph model.graph)
             )
 
         SetZoom floatString ->
@@ -233,7 +250,7 @@ update msg model =
                     )
 
 
-getNode : NodeGraph -> NodeId -> Node
+getNode : Nodes -> NodeId -> Node
 getNode nodes nodeId =
     Dict.get nodeId nodes |> Maybe.withDefault (Node (Position 0 0) emptyScene)
 
@@ -246,7 +263,7 @@ emptyScene =
     }
 
 
-updateNodePos : NodeId -> Position -> NodeGraph -> NodeGraph
+updateNodePos : NodeId -> Position -> Nodes -> Nodes
 updateNodePos nodeId position nodeGraph =
     let
         currentNode =
@@ -307,8 +324,8 @@ viewGraph model =
             ]
             (viewBoxBackground
                 :: [ Svg.g [ transform (scale model.scale) ]
-                        (drawEdges model.edges model.nodes
-                            ++ drawNodes model.nodes
+                        (drawEdges model.graph
+                            ++ drawNodes model.graph.nodes
                         )
                    ]
             )
@@ -334,12 +351,12 @@ viewBoxBackground =
         ]
 
 
-drawEdges : List Edge -> NodeGraph -> List (Svg.Svg Message)
-drawEdges edges dict =
-    List.map (\e -> drawEdge e dict) edges
+drawEdges : NodeGraph -> List (Svg.Svg Message)
+drawEdges graph =
+    List.map (\e -> drawEdge e graph.nodes) graph.edges
 
 
-drawEdge : Edge -> NodeGraph -> Svg.Svg Message
+drawEdge : Edge -> Nodes -> Svg.Svg Message
 drawEdge edge nodes =
     let
         fromNode =
@@ -447,3 +464,38 @@ decodeFractionY =
 decodeButtons : Decode.Decoder Bool
 decodeButtons =
     Decode.field "buttons" (Decode.map (\buttons -> buttons == 1) Decode.int)
+
+
+encodeGraph : NodeGraph -> String
+encodeGraph graph =
+    Encode.object
+        [ ( "nodes", Encode.list encodeNode (Dict.toList graph.nodes) )
+        , ( "edges", Encode.list encodeEdge graph.edges )
+        ]
+        |> Encode.encode 0
+
+
+encodeNode : ( Home, Node ) -> Encode.Value
+encodeNode ( home, node ) =
+    Encode.object
+        [ ( "home", Encode.string home )
+        , ( "position", encodePosition node.position )
+        , ( "scene", StoryModel.encodeScene node.scene )
+        ]
+
+
+encodePosition : Position -> Encode.Value
+encodePosition position =
+    Encode.object
+        [ ( "x", Encode.float position.x )
+        , ( "y", Encode.float position.y )
+        ]
+
+
+encodeEdge : Edge -> Encode.Value
+encodeEdge edge =
+    Encode.object
+        [ ( "fromNode", Encode.string edge.fromNode )
+        , ( "toNode", Encode.string edge.toNode )
+        , ( "label", Encode.string edge.label )
+        ]

@@ -10,7 +10,14 @@
 <div id="elm"></div>
 <script src="./app.js"></script>
 <script>
-    Elm.Main.init({node: document.getElementById("elm")});
+    const app = Elm.Main.init({node: document.getElementById("elm")});
+    app.ports.storeGraph.subscribe(function(posts) {
+        if (posts.length > 0) {
+            var postsJson = JSON.stringify(posts);
+            localStorage.setItem('currentGraph', postsJson);
+            console.log("Saved state: ", postsJson);
+        }
+    });
 </script>
 </body>
 </html>

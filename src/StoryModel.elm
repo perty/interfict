@@ -8,6 +8,7 @@ module StoryModel exposing
     , StoryImage
     , StoryLocation
     , StoryText
+    , encodeScene
     , getScene
     , getStory
     , getText
@@ -26,6 +27,7 @@ import Dict exposing (Dict)
 import Http
 import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (required)
+import Json.Encode as Encode
 
 
 type alias Model =
@@ -103,11 +105,28 @@ decodeScene =
         |> required "route" (Decode.list decodeSceneOption)
 
 
+encodeScene : Scene -> Encode.Value
+encodeScene scene =
+    Encode.object
+        [ ( "home", Encode.string scene.home )
+        , ( "name", Encode.string scene.name )
+        , ( "route", Encode.list encodeSceneOption scene.route )
+        ]
+
+
 decodeSceneOption : Decode.Decoder SceneOption
 decodeSceneOption =
     Decode.succeed SceneOption
         |> required "optionText" Decode.string
         |> required "target" Decode.string
+
+
+encodeSceneOption : SceneOption -> Encode.Value
+encodeSceneOption sceneOption =
+    Encode.object
+        [ ( "optionText", Encode.string sceneOption.optionText )
+        , ( "target", Encode.string sceneOption.target )
+        ]
 
 
 setStory : Model -> Story -> Model
